@@ -67,16 +67,6 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
 
     if (p1 == 0) {
 
-        fprintf(stderr, "%i\n", jobs[0].id);
-        fprintf(stderr, "%ld\n", (long) jobs[0].pid);
-        fprintf(stderr, "%s\n", jobs[0].name);
-        fprintf(stderr, "%i\n", jobs[1].id);
-        fprintf(stderr, "%ld\n", (long) jobs[1].pid);
-        fprintf(stderr, "%s\n", jobs[1].name);
-        fprintf(stderr, "%i\n", jobs[2].id);
-        fprintf(stderr, "%ld\n", (long) jobs[2].pid);
-        fprintf(stderr, "%s\n", jobs[2].name);
-        
         int success = execvp(toks[0], toks);
         if (success == -1) {
             fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
@@ -155,6 +145,7 @@ void eval(const char **toks, bool bg) { // bg is true iff command ended with &
         cmd_jobs(toks);
     } else {
         spawn(toks, bg);
+        cmd_jobs(toks);
     }
 }
 
