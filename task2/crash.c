@@ -4,12 +4,16 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #define MAXLINE 1024
 #define MAXJOBS 1024
 
 void cmd_jobs(const char**);
-void insert_jobs(const char**);
+void insert_jobs(const char**, pid_t);
 
 char **environ;
 
@@ -46,18 +50,23 @@ void install_signal_handlers() {
 }
 
 void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
-
-    job_id = job_id + 1;
-
+    /*
+    job_id = mmap(NULL, sizeof *job_id, PROT_READ | PROT_WRITE, 
+                    MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    curr = mmap(NULL, sizeof *job_id, PROT_READ | PROT_WRITE, 
+                MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    jobs = mmap(NULL, sizeof *job_id, PROT_READ | PROT_WRITE, 
+                    MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    */
     pid_t p1 = fork();  // fork results in two concurrent processes
 
     if (p1 == -1) {
-        fprintf(stderr, "ERROR: rwrw rwr cannot run %s\n", toks[0]);
+        fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
         exit(0);
     }
 
     if (p1 == 0) {
-        insert_jobs(toks);
+
         fprintf(stderr, "%i\n", jobs[0].id);
         fprintf(stderr, "%ld\n", (long) jobs[0].pid);
         fprintf(stderr, "%s\n", jobs[0].name);
@@ -67,18 +76,16 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
         fprintf(stderr, "%i\n", jobs[2].id);
         fprintf(stderr, "%ld\n", (long) jobs[2].pid);
         fprintf(stderr, "%s\n", jobs[2].name);
-        if (strcmp(toks[0], "jobs") == 0) {  
-            cmd_jobs(toks);
-        } else {
-            int success = execvp(toks[0], toks);
-            if (success == -1) {
-                fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
-                exit(0);
-            } 
-        }
+        
+        int success = execvp(toks[0], toks);
+        if (success == -1) {
+            fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
+            exit(0);
+        } 
 
     } else {
-        
+        job_id = job_id + 1;
+        insert_jobs(toks, p1);
         if (bg) {
             pid_t p2 = waitpid(-1, NULL, WNOHANG);
         } else {
@@ -87,9 +94,9 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
     }
 }
 
-void insert_jobs(const char **toks) {
+void insert_jobs(const char **toks, pid_t pid) {
     curr.id = job_id;
-    curr.pid = getpid();
+    curr.pid = pid;
     char *copy;
     copy = malloc((strlen(toks[0]) + 1));
     strcpy(copy, toks[0]);
@@ -99,7 +106,7 @@ void insert_jobs(const char **toks) {
 
 void cmd_jobs(const char **toks) {
     // TODO
-    for (int i = 0; i < job_id - 1; i++) {
+    for (int i = 0; i < job_id; i++) {
         // job id
         printf("[");
         printf("%i", jobs[i].id);
@@ -116,7 +123,6 @@ void cmd_jobs(const char **toks) {
         printf("%s\n", jobs[i].name);
 
     }
-    
 }
 
 void cmd_fg(const char **toks) {
@@ -145,6 +151,8 @@ void eval(const char **toks, bool bg) { // bg is true iff command ended with &
     if (strcmp(toks[0], "quit") == 0) {
         cmd_quit(toks);
     // TODO: other commands
+    } else if (strcmp(toks[0], "jobs") == 0) {
+        cmd_jobs(toks);
     } else {
         spawn(toks, bg);
     }

@@ -33,11 +33,33 @@ void install_signal_handlers() {
 }
 
 void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
-    // TODO
+
+    pid_t p1 = fork();  // fork results in two concurrent processes
+
+    if (p1 == -1) {
+        fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
+        exit(0);
+    }
+
+    if (p1 == 0) {
+        int success = execvp(toks[0], toks);
+        if (success == -1) {
+            fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
+            exit(0);
+        }
+    } else {
+        if (bg) {
+            pid_t p2 = waitpid(-1, NULL, WNOHANG);
+        } else {
+            pid_t p2 = waitpid(p1, NULL, 0);
+        }
+    }
 }
+
 
 void cmd_jobs(const char **toks) {
     // TODO
+
 }
 
 void cmd_fg(const char **toks) {
@@ -94,7 +116,7 @@ void parse_and_eval(char *s) {
                 end = true;
                 break;
             }
-            *s++ = '\0';
+            if (*s) *s++ = '\0';
         }
         toks[t] = NULL;
         eval(toks, bg);
