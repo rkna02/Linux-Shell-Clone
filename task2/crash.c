@@ -4,10 +4,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #define MAXLINE 1024
 #define MAXJOBS 1024
@@ -96,6 +92,7 @@ void insert_jobs(const char **toks, pid_t pid) {
 
 void cmd_jobs(const char **toks) {
     // TODO
+
     for (int i = 0; i < job_id; i++) {
         // job id
         printf("[");
@@ -111,8 +108,8 @@ void cmd_jobs(const char **toks) {
         
         // command name
         printf("%s\n", jobs[i].name);
-
     }
+    
 }
 
 void cmd_fg(const char **toks) {
@@ -142,7 +139,11 @@ void eval(const char **toks, bool bg) { // bg is true iff command ended with &
         cmd_quit(toks);
     // TODO: other commands
     } else if (strcmp(toks[0], "jobs") == 0) {
-        cmd_jobs(toks);
+        if (toks[1] != NULL) {
+            fprintf(stderr, "ERROR: jobs takes no arguments\n");
+        } else {
+            cmd_jobs(toks);
+        }
     } else {
         spawn(toks, bg);
         cmd_jobs(toks);
