@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #define MAXLINE 1024
 #define MAXJOBS 1024
@@ -19,6 +20,7 @@ typedef struct {
     int id;
     pid_t pid;
     char *name;
+    //bool present;
 } job;
 
 job jobs[1024];  // array of pointers to job objects
@@ -46,14 +48,7 @@ void install_signal_handlers() {
 }
 
 void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
-    /*
-    job_id = mmap(NULL, sizeof *job_id, PROT_READ | PROT_WRITE, 
-                    MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    curr = mmap(NULL, sizeof *job_id, PROT_READ | PROT_WRITE, 
-                MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    jobs = mmap(NULL, sizeof *job_id, PROT_READ | PROT_WRITE, 
-                    MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    */
+
     pid_t p1 = fork();  // fork results in two concurrent processes
 
     if (p1 == -1) {
@@ -72,8 +67,9 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
     } else {
         job_id = job_id + 1;
         insert_jobs(toks, p1);
+        printf("[%i] (%ld)  %s\n", job_id, (long) p1, jobs[job_id - 1].name);
         if (bg) {
-            pid_t p2 = waitpid(-1, NULL, WNOHANG);
+            return;
         } else {
             pid_t p2 = waitpid(p1, NULL, 0);
         }
@@ -92,22 +88,8 @@ void insert_jobs(const char **toks, pid_t pid) {
 
 void cmd_jobs(const char **toks) {
     // TODO
-
     for (int i = 0; i < job_id; i++) {
-        // job id
-        printf("[");
-        printf("%i", jobs[i].id);
-        printf("] ");
-
-        // job pid 
-        printf("(");
-        printf("%ld", (long) jobs[i].pid);
-        printf(")  ");
-
-        // job status 
-        
-        // command name
-        printf("%s\n", jobs[i].name);
+        printf("[%i] (%ld)  running  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
     }
     
 }
@@ -146,7 +128,7 @@ void eval(const char **toks, bool bg) { // bg is true iff command ended with &
         }
     } else {
         spawn(toks, bg);
-        cmd_jobs(toks);
+        //cmd_jobs(toks);
     }
 }
 
