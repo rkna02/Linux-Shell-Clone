@@ -33,13 +33,12 @@ int job_id = 0;  // job id reference numbers
 int foreground_job = -1;
 
 void handle_sigchld(int sig) {
-    sigset_t mask;  // sigset_t represent a signal set
-    sigfillset(&mask);  // all recongnized signals are excluded
+    sigset_t mask;  
+    sigfillset(&mask);  
     pid_t sig_pid;
 
     int status;
     while ((sig_pid = waitpid(-1, &status, WNOHANG)) != -1) {   
-  
         if ( WIFSIGNALED(status) ) {
             int exit_status = WTERMSIG(status);       
             if (exit_status == 2 || exit_status == 3) {
@@ -74,7 +73,6 @@ void handle_sigchld(int sig) {
 }
 
 void handle_sigtstp(int sig) {
-    
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == false) {
             kill(jobs[foreground_job - 1].pid, SIGTSTP);
@@ -84,26 +82,11 @@ void handle_sigtstp(int sig) {
     } else {
         return;
     }
-    
 }
 
 void handle_sigint(int sig) {
-    //sigset_t mask;  // sigset_t represent a signal set
-    //sigfillset(&mask);  // all recongnized signals are excluded
-    //pid_t sig_pid;
-
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == 0) {
-            /*
-            write(STDOUT_FILENO, "[", sizeof("["));
-            write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
-            write(STDOUT_FILENO, "] (", sizeof("] ("));
-            write(STDOUT_FILENO, jobs[foreground_job - 1].pid_s, sizeof(jobs[foreground_job - 1].pid_s));
-            write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
-            write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
-            write(STDOUT_FILENO, "\n", sizeof("\n"));
-            //sigprocmask(SIG_UNBLOCK, &mask, NULL);
-            */
             kill(jobs[foreground_job - 1].pid, SIGINT);
         } else {
             return;
@@ -111,22 +94,11 @@ void handle_sigint(int sig) {
     } else {
         return;
     }
-
 }
 
 void handle_sigquit(int sig) {
-    
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == 0) {
-            /*
-            write(STDOUT_FILENO, "[", sizeof("["));
-            write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
-            write(STDOUT_FILENO, "] (", sizeof("] ("));
-            write(STDOUT_FILENO, jobs[foreground_job - 1].pid_s, sizeof(jobs[foreground_job - 1].pid_s));
-            write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
-            write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
-            write(STDOUT_FILENO, "\n", sizeof("\n"));
-            */
             kill(jobs[foreground_job - 1].pid, SIGQUIT);
             return;
         } else {
@@ -135,7 +107,6 @@ void handle_sigquit(int sig) {
     } else {
         _exit(0);
     }
-
 }
 
 void install_signal_handlers() {
@@ -157,7 +128,7 @@ void install_signal_handlers() {
     struct sigaction quit;
     quit.sa_handler = handle_sigquit;
     quit.sa_flags = SA_RESTART;
-    sigemptyset(&quit.sa_mask);
+    sigfillset(&quit.sa_mask);
     sigaction(SIGQUIT, &quit, NULL);
 }
 
@@ -254,29 +225,46 @@ void cmd_jobs(const char **toks) {
 }
 
 void cmd_fg(const char **toks) {
+    sigset_t mask;  
+    sigfillset(&mask);  
+    char *remaining = NULL;
 
     if (toks[1][0] == (char)'%') {
-        for (int i = 0; i < job_id; i++) {
-            if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
-                foreground_job = jobs[i].id;
-                while (jobs[foreground_job - 1].terminated == false) {
-                    sleep(0.1);
+        strtol(toks[1] + 1, &remaining, 10);
+        if (remaining != NULL) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    foreground_job = jobs[i].id;
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    while (jobs[foreground_job - 1].terminated == false) {
+                        sleep(0.1);
+                    }
+                    return;
                 }
-                return;
             }
+            fprintf(stderr, "ERROR: no job %s\n", toks[1]);
         }
-        fprintf(stderr, "ERROR: no job %s\n", toks[1]);
     } else {
-        for (int i = 0; i < job_id; i++) {
-            if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
-                foreground_job = jobs[i].id;
-                while (jobs[foreground_job - 1].terminated == false) {
-                    sleep(0.1);
+        strtol(toks[1], &remaining, 10);
+        if (remaining != NULL) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    foreground_job = jobs[i].id;
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    while (jobs[foreground_job - 1].terminated == false) {
+                        sleep(0.1);
+                    }
+                    return;
                 }
-                return;
             }
+            fprintf(stderr, "ERROR: no PID %ld\n", (long) toks[1]);
         }
-        fprintf(stderr, "ERROR: no PID %ld\n", (long) toks[1]);
     }
 }
 
@@ -287,31 +275,42 @@ void cmd_bg(const char **toks) {
 void cmd_slay(const char **toks) {
     sigset_t mask;  // sigset_t represent a signal set
     sigfillset(&mask);  // all recongnized signals are excluded
+    char *remaining = NULL;
 
     if (toks[1][0] == (char)'%') {
-        for (int i = 0; i < job_id; i++) {
-            if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
-                sigprocmask(SIG_BLOCK, &mask, NULL);
-                jobs[i].terminated = true;
-                kill(jobs[i].pid, SIGKILL);
-                printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
-                sigprocmask(SIG_UNBLOCK, &mask, NULL);
-                return;
+        strtol(toks[1] + 1, &remaining, 10);
+        if (remaining != NULL) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
+                    kill(jobs[i].pid, SIGKILL);
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    jobs[i].terminated = true;
+                    printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    return;
+                }
             }
+            fprintf(stderr, "ERROR: no job %s\n", toks[1]);
         }
-        fprintf(stderr, "ERROR: no job %s\n", toks[1]);
     } else {
-        for (int i = 0; i < job_id; i++) {
-            if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
-                sigprocmask(SIG_BLOCK, &mask, NULL);
-                jobs[i].terminated = true;
-                kill(jobs[i].pid, SIGKILL);
-                printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
-                sigprocmask(SIG_UNBLOCK, &mask, NULL);
-                return;
+        strtol(toks[1], &remaining, 10);
+        if (remaining != NULL) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
+                    kill(jobs[i].pid, SIGKILL);
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    jobs[i].terminated = true;
+                    printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    return;
+                }
             }
+            fprintf(stderr, "ERROR: no PID %ld\n", (long) toks[1]);
         }
-        fprintf(stderr, "ERROR: no PID %ld\n", (long) toks[1]);
     }
 
 }
