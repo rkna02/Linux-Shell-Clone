@@ -11,7 +11,7 @@
 #define MAXJOBS 1024
 
 void cmd_jobs(const char**);
-void insert_jobs(const char**, pid_t);
+void insert_jobs(const char**, pid_t, bool);
 
 char **environ;
 
@@ -24,6 +24,7 @@ typedef struct {
     pid_t pid;
     char *name;
     bool terminated;
+    bool suspended; 
 } job;
 
 job jobs[1024];  // array of pointers to job objects
@@ -36,12 +37,36 @@ void handle_sigchld(int sig) {
     sigfillset(&mask);  // all recongnized signals are excluded
     pid_t sig_pid;
 
-    while ((sig_pid = waitpid(-1, 0, WNOHANG)) != -1) {
-        for (int i = 0; i < job_id; i++) {
-            if (jobs[i].pid == sig_pid) {
-                sigprocmask(SIG_BLOCK, &mask, NULL);
-                jobs[i].terminated = true;
-                sigprocmask(SIG_UNBLOCK, &mask, NULL);
+    int status;
+    while ((sig_pid = waitpid(-1, &status, WNOHANG)) != -1) {   
+  
+        if ( WIFSIGNALED(status) ) {
+            int exit_status = WTERMSIG(status);       
+            if (exit_status == 2 || exit_status == 3) {
+                for (int i = 0; i < job_id; i++) {
+                    if (jobs[i].pid == sig_pid) {
+                        sigprocmask(SIG_BLOCK, &mask, NULL);
+                        jobs[i].terminated = true;
+                        write(STDOUT_FILENO, "[", sizeof("["));
+                        write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
+                        write(STDOUT_FILENO, "] (", sizeof("] ("));
+                        write(STDOUT_FILENO, jobs[i].pid_s, sizeof(jobs[i].pid_s));
+                        write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
+                        write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
+                        write(STDOUT_FILENO, "\n", sizeof("\n"));
+                        sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                        return;
+                    }
+                }
+            }
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (jobs[i].pid == sig_pid) {
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    jobs[i].terminated = true;
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    break;
+                }
             }
         }
     }
@@ -52,7 +77,7 @@ void handle_sigtstp(int sig) {
     
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == false) {
-            kill(jobs[foreground_job - 1].pid, SIGSTOP);
+            kill(jobs[foreground_job - 1].pid, SIGTSTP);
         } else {
             return;
         }
@@ -91,7 +116,6 @@ void handle_sigquit(int sig) {
     
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == 0) {
-
             write(STDOUT_FILENO, "[", sizeof("["));
             write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
             write(STDOUT_FILENO, "] (", sizeof("] ("));
@@ -107,7 +131,6 @@ void handle_sigquit(int sig) {
     } else {
         _exit(0);
     }
-    _exit(0);
 
 }
 
@@ -150,12 +173,15 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
         int success = execvp(toks[0], toks);
         if (success == -1) {
             fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
-        } 
+        }
         exit(0);
     } else {
         job_id = job_id + 1;
-        insert_jobs(toks, p1);
-        printf("[%i] (%ld)  %s\n", job_id, (long) p1, jobs[job_id - 1].name);
+        insert_jobs(toks, p1, bg);
+        setpgid(jobs[job_id - 1].pid, 0);
+        if (strcmp(jobs[job_id - 1].name, "kill") != 0) {
+            printf("[%i] (%ld)  %s\n", job_id, (long) p1, jobs[job_id - 1].name);
+        }
         sigprocmask(SIG_UNBLOCK, &mask, NULL);
         if (bg) {
             return;
@@ -169,7 +195,7 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
 
 }
 
-void insert_jobs(const char **toks, pid_t pid) {
+void insert_jobs(const char **toks, pid_t pid, bool bg) {
 
     // job id
     jobs[job_id - 1].id = job_id;
@@ -209,7 +235,7 @@ void insert_jobs(const char **toks, pid_t pid) {
     jobs[job_id - 1].terminated = false;
 
     // update foreground job if appropriate 
-    if (!toks[2]) {
+    if (!bg) {
         foreground_job = jobs[job_id - 1].id;
     }
 
