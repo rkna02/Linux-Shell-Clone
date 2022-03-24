@@ -55,7 +55,7 @@ void handle_sigchld(int sig) {
                         write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
                         write(STDOUT_FILENO, "\n", sizeof("\n"));
                         sigprocmask(SIG_UNBLOCK, &mask, NULL);
-                        return;
+                        break;
                     }
                 }
             }
@@ -94,6 +94,7 @@ void handle_sigint(int sig) {
 
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == 0) {
+            /*
             write(STDOUT_FILENO, "[", sizeof("["));
             write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
             write(STDOUT_FILENO, "] (", sizeof("] ("));
@@ -102,6 +103,7 @@ void handle_sigint(int sig) {
             write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
             write(STDOUT_FILENO, "\n", sizeof("\n"));
             //sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            */
             kill(jobs[foreground_job - 1].pid, SIGINT);
         } else {
             return;
@@ -116,6 +118,7 @@ void handle_sigquit(int sig) {
     
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == 0) {
+            /*
             write(STDOUT_FILENO, "[", sizeof("["));
             write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
             write(STDOUT_FILENO, "] (", sizeof("] ("));
@@ -123,6 +126,7 @@ void handle_sigquit(int sig) {
             write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
             write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
             write(STDOUT_FILENO, "\n", sizeof("\n"));
+            */
             kill(jobs[foreground_job - 1].pid, SIGQUIT);
             return;
         } else {
