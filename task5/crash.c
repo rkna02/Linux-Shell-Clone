@@ -176,7 +176,6 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
         job_id = job_id + 1;
         setpgid(0, 0);
         insert_jobs(toks, p1, bg);
-        fprintf(stderr, "%ld", (long) p1);
 
         // print job message if the command is not "kill"
         if (strcmp(jobs[job_id - 1].name, "kill") != 0) {
@@ -265,15 +264,21 @@ void cmd_fg(const char **toks) {
 
     if (toks[1][0] == (char)'%') {
         strtol(toks[1] + 1, &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
                     sigprocmask(SIG_BLOCK, &mask, NULL);
-                    foreground_job = jobs[i].id;
+                    if (jobs[i].suspended == true) {
+                        foreground_job = jobs[i].id;
+                        jobs[i].suspended = false;
+                        kill(jobs[i].pid, SIGCONT);
+                    } else {
+                        foreground_job = jobs[i].id;
+                    }
                     sigprocmask(SIG_UNBLOCK, &mask, NULL);
-                    while (jobs[foreground_job - 1].terminated == false) {
+                    while (jobs[foreground_job - 1].terminated == false && jobs[foreground_job - 1].suspended == false) {
                         sleep(0.1);
                     }
                     return;
@@ -283,15 +288,21 @@ void cmd_fg(const char **toks) {
         }
     } else {
         strtol(toks[1], &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
                     sigprocmask(SIG_BLOCK, &mask, NULL);
-                    foreground_job = jobs[i].id;
+                    if (jobs[i].suspended == true) {
+                        foreground_job = jobs[i].id;
+                        jobs[i].suspended = false;
+                        kill(jobs[i].pid, SIGCONT);
+                    } else {
+                        foreground_job = jobs[i].id;
+                    }
                     sigprocmask(SIG_UNBLOCK, &mask, NULL);
-                    while (jobs[foreground_job - 1].terminated == false) {
+                    while (jobs[foreground_job - 1].terminated == false && jobs[foreground_job - 1].suspended == false) {
                         sleep(0.1);
                     }
                     return;
@@ -303,7 +314,53 @@ void cmd_fg(const char **toks) {
 }
 
 void cmd_bg(const char **toks) {
+    sigset_t mask;  
+    sigfillset(&mask);  
+    char *remaining = NULL;
 
+    if (toks[1][0] == (char)'%') {
+        strtol(toks[1] + 1, &remaining, 10);
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    if (jobs[i].suspended == true) {
+                        kill(jobs[i].pid, SIGCONT);
+                        jobs[i].suspended = false;
+                        if (foreground_job == jobs[i].id) {
+                            foreground_job = -1;
+                        }
+                    } 
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    return;
+                }
+            }
+            fprintf(stderr, "ERROR: no job %s\n", toks[1]);
+        }
+    } else {
+        strtol(toks[1], &remaining, 10);
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    if (jobs[i].suspended == true) {
+                        kill(jobs[i].pid, SIGCONT);
+                        jobs[i].suspended = false;
+                        if (foreground_job == jobs[i].id) {
+                            foreground_job = -1;
+                        }
+                    }
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    return;
+                }
+            }
+            fprintf(stderr, "ERROR: no PID %ld\n", (long) toks[1]);
+        }
+    }
 }
 
 void cmd_slay(const char **toks) {
@@ -313,7 +370,7 @@ void cmd_slay(const char **toks) {
 
     if (toks[1][0] == (char)'%') {
         strtol(toks[1] + 1, &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
@@ -330,7 +387,7 @@ void cmd_slay(const char **toks) {
         }
     } else {
         strtol(toks[1], &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
@@ -375,16 +432,22 @@ void eval(const char **toks, bool bg) { // bg is true iff command ended with &
 
     // slay, fg, bg
     } else if (strcmp(toks[0], "slay") == 0) {
-        if (toks[1] == NULL || toks[3] != NULL) {
+        if (toks[1] == NULL || toks[2] != NULL) {
             fprintf(stderr, "ERROR: slay takes exactly one argument\n");
         } else {
             cmd_slay(toks);
         }
     } else if (strcmp(toks[0], "fg") == 0) {
-        if (toks[1] == NULL || toks[3] != NULL) {
+        if (toks[1] == NULL || toks[2] != NULL) {
             fprintf(stderr, "ERROR: fg takes exactly one argument\n");
         } else {
             cmd_fg(toks);
+        }
+    } else if (strcmp(toks[0], "bg") == 0) {
+        if (toks[1] == NULL || toks[2] != NULL) {
+            fprintf(stderr, "ERROR: bg takes exactly one argument\n");
+        } else {
+            cmd_bg(toks);
         }
     } else {
         spawn(toks, bg);
