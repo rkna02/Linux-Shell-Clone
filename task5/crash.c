@@ -389,10 +389,6 @@ void cmd_slay(const char **toks) {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
                     kill(jobs[i].pid, SIGKILL);
-                    sigprocmask(SIG_BLOCK, &mask, NULL);
-                    jobs[i].terminated = true;
-                    printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
-                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
                     return;
                 }
             }
@@ -406,10 +402,6 @@ void cmd_slay(const char **toks) {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
                     kill(jobs[i].pid, SIGKILL);
-                    sigprocmask(SIG_BLOCK, &mask, NULL);
-                    jobs[i].terminated = true;
-                    printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
-                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
                     return;
                 }
             }
