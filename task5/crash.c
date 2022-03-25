@@ -33,8 +33,8 @@ int job_id = 0;  // job id reference numbers
 int foreground_job = -1;
 
 void handle_sigchld(int sig) {
-    //sigset_t mask;  
-    //sigfillset(&mask);  
+    sigset_t mask;  
+    sigfillset(&mask);  
     pid_t sig_pid;
     int status;
     
@@ -42,42 +42,51 @@ void handle_sigchld(int sig) {
         if (WIFSTOPPED(status)) {
             int exit_status = WSTOPSIG(status);  
             if (exit_status == 19 || exit_status == 20) {
-                //sigprocmask(SIG_BLOCK, &mask, NULL);
-                jobs[foreground_job - 1].suspended = true;  // mark suspended (not terminated)
-                write(STDOUT_FILENO, "[", sizeof("["));
-                write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
-                write(STDOUT_FILENO, "] (", sizeof("] ("));
-                write(STDOUT_FILENO, jobs[foreground_job - 1].pid_s, sizeof(jobs[foreground_job - 1].pid_s));
-                write(STDOUT_FILENO, ")  suspended  ", sizeof(")  suspended  "));
-                write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
-                write(STDOUT_FILENO, "\n", sizeof("\n"));
-                //sigprocmask(SIG_UNBLOCK, &mask, NULL);
-            } 
-        } 
-        if (WIFSIGNALED(status)) {
-            int exit_status = WTERMSIG(status);    
-            if (exit_status == 2 || exit_status == 3) {  
-                if (foreground_job != -1 && jobs[foreground_job - 1].terminated == false) {
-                    //sigprocmask(SIG_BLOCK, &mask, NULL);
-                    jobs[foreground_job - 1].terminated = true;  // mark terminated
-                    write(STDOUT_FILENO, "[", sizeof("["));
-                    write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
-                    write(STDOUT_FILENO, "] (", sizeof("] ("));
-                    write(STDOUT_FILENO, jobs[foreground_job - 1].pid_s, sizeof(jobs[foreground_job - 1].pid_s));
-                    write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
-                    write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
-                    write(STDOUT_FILENO, "\n", sizeof("\n"));
-                    foreground_job = -1;
-                    //sigprocmask(SIG_UNBLOCK, &mask, NULL);    
+                for (int i = 0; i < job_id; i++) {
+                    if (jobs[i].pid == sig_pid) {
+                        sigprocmask(SIG_BLOCK, &mask, NULL);
+                        jobs[foreground_job - 1].suspended = true;  // mark suspended (not terminated)
+                        write(STDOUT_FILENO, "[", sizeof("["));
+                        write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
+                        write(STDOUT_FILENO, "] (", sizeof("] ("));
+                        write(STDOUT_FILENO, jobs[i].pid_s, sizeof(jobs[i].pid_s));
+                        write(STDOUT_FILENO, ")  suspended  ", sizeof(")  suspended  "));
+                        write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
+                        write(STDOUT_FILENO, "\n", sizeof("\n"));
+                        sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                        break;
+                    }
                 }
             } 
         } 
+        
+        if (WIFSIGNALED(status)) {
+            int exit_status = WTERMSIG(status);    
+            if (exit_status == 2 || exit_status == 3 || exit_status == SIGKILL) {  
+                for (int i = 0; i < job_id; i++) {
+                    if (jobs[i].pid == sig_pid) {
+                        sigprocmask(SIG_BLOCK, &mask, NULL);
+                        jobs[i].terminated = true;  // mark terminated
+                        write(STDOUT_FILENO, "[", sizeof("["));
+                        write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
+                        write(STDOUT_FILENO, "] (", sizeof("] ("));
+                        write(STDOUT_FILENO, jobs[i].pid_s, sizeof(jobs[i].pid_s));
+                        write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
+                        write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
+                        write(STDOUT_FILENO, "\n", sizeof("\n"));
+                        sigprocmask(SIG_UNBLOCK, &mask, NULL);  
+                        break;
+                    }  
+                }
+            } 
+        } 
+
         if (WIFEXITED(status)) {
             for (int i = 0; i < job_id; i++) {
                 if (jobs[i].pid == sig_pid) {
-                    //sigprocmask(SIG_BLOCK, &mask, NULL);
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
                     jobs[i].terminated = true;
-                    //sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
                     break;
                 }
             }
