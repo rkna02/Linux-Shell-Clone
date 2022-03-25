@@ -33,8 +33,8 @@ int job_id = 0;  // job id reference numbers
 int foreground_job = -1;
 
 void handle_sigchld(int sig) {
-    sigset_t mask;  
-    sigfillset(&mask);  
+    //sigset_t mask;  
+    //sigfillset(&mask);  
     pid_t sig_pid;
     int status;
     
@@ -42,7 +42,7 @@ void handle_sigchld(int sig) {
         if (WIFSTOPPED(status)) {
             int exit_status = WSTOPSIG(status);  
             if (exit_status == 19 || exit_status == 20) {
-                sigprocmask(SIG_BLOCK, &mask, NULL);
+                //sigprocmask(SIG_BLOCK, &mask, NULL);
                 jobs[foreground_job - 1].suspended = true;  // mark suspended (not terminated)
                 write(STDOUT_FILENO, "[", sizeof("["));
                 write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
@@ -51,33 +51,33 @@ void handle_sigchld(int sig) {
                 write(STDOUT_FILENO, ")  suspended  ", sizeof(")  suspended  "));
                 write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
                 write(STDOUT_FILENO, "\n", sizeof("\n"));
-                sigprocmask(SIG_UNBLOCK, &mask, NULL);
-            } else {
-                return;
-            }
-        } else if (WIFSIGNALED(status)) {
+                //sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            } 
+        } 
+        if (WIFSIGNALED(status)) {
             int exit_status = WTERMSIG(status);    
-            fprintf(stderr, "%d\n", exit_status);   
             if (exit_status == 2 || exit_status == 3) {  
-                sigprocmask(SIG_BLOCK, &mask, NULL);
-                jobs[foreground_job - 1].terminated = true;  // mark terminated
-                write(STDOUT_FILENO, "[", sizeof("["));
-                write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
-                write(STDOUT_FILENO, "] (", sizeof("] ("));
-                write(STDOUT_FILENO, jobs[foreground_job - 1].pid_s, sizeof(jobs[foreground_job - 1].pid_s));
-                write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
-                write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
-                write(STDOUT_FILENO, "\n", sizeof("\n"));
-                sigprocmask(SIG_UNBLOCK, &mask, NULL);    
-            } else {
-                return;
-            }
-        } else {
+                if (foreground_job != -1 && jobs[foreground_job - 1].terminated == false) {
+                    //sigprocmask(SIG_BLOCK, &mask, NULL);
+                    jobs[foreground_job - 1].terminated = true;  // mark terminated
+                    write(STDOUT_FILENO, "[", sizeof("["));
+                    write(STDOUT_FILENO, jobs[foreground_job - 1].id_s, sizeof(jobs[foreground_job - 1].id_s));
+                    write(STDOUT_FILENO, "] (", sizeof("] ("));
+                    write(STDOUT_FILENO, jobs[foreground_job - 1].pid_s, sizeof(jobs[foreground_job - 1].pid_s));
+                    write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
+                    write(STDOUT_FILENO, jobs[foreground_job - 1].name, sizeof(jobs[foreground_job - 1].name));
+                    write(STDOUT_FILENO, "\n", sizeof("\n"));
+                    foreground_job = -1;
+                    //sigprocmask(SIG_UNBLOCK, &mask, NULL);    
+                }
+            } 
+        } 
+        if (WIFEXITED(status)) {
             for (int i = 0; i < job_id; i++) {
                 if (jobs[i].pid == sig_pid) {
-                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    //sigprocmask(SIG_BLOCK, &mask, NULL);
                     jobs[i].terminated = true;
-                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    //sigprocmask(SIG_UNBLOCK, &mask, NULL);
                     break;
                 }
             }
@@ -87,9 +87,13 @@ void handle_sigchld(int sig) {
 }
 
 void handle_sigtstp(int sig) {
+    //sigset_t mask;  
+    //sigfillset(&mask);  
+    //lsigprocmask(SIG_BLOCK, &mask, NULL);
     if (foreground_job != -1) {
         if (jobs[foreground_job - 1].terminated == 0 && jobs[foreground_job - 1].suspended == 0) {
             kill(jobs[foreground_job - 1].pid, SIGTSTP);
+            //sigprocmask(SIG_BLOCK, &mask, NULL);
         } else {
             return;
         }
@@ -128,7 +132,7 @@ void install_signal_handlers() {
     struct sigaction chld;
     chld.sa_handler = handle_sigchld;
     chld.sa_flags = SA_RESTART;
-    sigfillset(&chld.sa_mask);
+    sigemptyset(&chld.sa_mask);
     sigaction(SIGCHLD, &chld, NULL);
 
     // install SIGINT
@@ -142,14 +146,14 @@ void install_signal_handlers() {
     struct sigaction quit;
     quit.sa_handler = handle_sigquit;
     quit.sa_flags = SA_RESTART;
-    sigemptyset(&quit.sa_mask);
+    sigfillset(&quit.sa_mask);
     sigaction(SIGQUIT, &quit, NULL);
 
     // install SIGTSTP
     struct sigaction tstp;
     tstp.sa_handler = handle_sigtstp;
     tstp.sa_flags = SA_RESTART;
-    sigemptyset(&tstp.sa_mask);
+    sigfillset(&tstp.sa_mask);
     sigaction(SIGTSTP, &tstp, NULL);
 }
 
@@ -166,6 +170,7 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
     }
     if (p1 == 0) {
         sigprocmask(SIG_UNBLOCK, &mask, NULL);
+        setpgid(0, 0);
         int success = execvp(toks[0], toks);
         if (success == -1) {
             fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
@@ -174,7 +179,6 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
     } else {
         // update job status
         job_id = job_id + 1;
-        setpgid(0, 0);
         insert_jobs(toks, p1, bg);
 
         // print job message if the command is not "kill"
@@ -189,7 +193,7 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
         }
         if (!bg) {
             while (jobs[foreground_job - 1].terminated == false && jobs[foreground_job - 1].suspended == false) {
-                sleep(0.1);
+                sleep(0.01);
             }
         }
     }
