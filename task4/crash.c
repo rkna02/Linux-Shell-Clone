@@ -334,7 +334,7 @@ void cmd_bg(const char **toks) {
     if (toks[1][0] == (char)'%') {
         strtol(toks[1] + 1, &remaining, 10);
         if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
-            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+            fprintf(stderr, "ERROR: bad argument for bg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
@@ -355,7 +355,7 @@ void cmd_bg(const char **toks) {
     } else {
         strtol(toks[1], &remaining, 10);
         if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
-            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+            fprintf(stderr, "ERROR: bad argument for bg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
@@ -384,7 +384,7 @@ void cmd_slay(const char **toks) {
     if (toks[1][0] == (char)'%') {
         strtol(toks[1] + 1, &remaining, 10);
         if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
-            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+            fprintf(stderr, "ERROR: bad argument for slay: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
@@ -397,7 +397,7 @@ void cmd_slay(const char **toks) {
     } else {
         strtol(toks[1], &remaining, 10);
         if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
-            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+            fprintf(stderr, "ERROR: bad argument for slay: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
