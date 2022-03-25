@@ -45,7 +45,7 @@ void handle_sigchld(int sig) {
                 for (int i = 0; i < job_id; i++) {
                     if (jobs[i].pid == sig_pid) {
                         sigprocmask(SIG_BLOCK, &mask, NULL);
-                        jobs[foreground_job - 1].suspended = true;  // mark suspended (not terminated)
+                        jobs[i].suspended = true;  // mark suspended (not terminated)
                         write(STDOUT_FILENO, "[", sizeof("["));
                         write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
                         write(STDOUT_FILENO, "] (", sizeof("] ("));
