@@ -46,14 +46,14 @@ void handle_sigchld(int sig) {
                     if (jobs[i].pid == sig_pid) {
                         sigprocmask(SIG_BLOCK, &mask, NULL);
                         jobs[i].suspended = true;  // mark suspended (not terminated)
-                        write(STDOUT_FILENO, "[", sizeof("["));
-                        write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
-                        write(STDOUT_FILENO, "] (", sizeof("] ("));
-                        write(STDOUT_FILENO, jobs[i].pid_s, sizeof(jobs[i].pid_s));
-                        write(STDOUT_FILENO, ")  suspended  ", sizeof(")  suspended  "));
-                        write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
-                        write(STDOUT_FILENO, "\n", sizeof("\n"));
                         sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                        write(STDOUT_FILENO, "[", strlen("[") + 1);
+                        write(STDOUT_FILENO, jobs[i].id_s, strlen(jobs[i].id_s) + 1);
+                        write(STDOUT_FILENO, "] (", strlen("] (") + 1);
+                        write(STDOUT_FILENO, jobs[i].pid_s, strlen(jobs[i].pid_s) + 1);
+                        write(STDOUT_FILENO, ")  suspended  ", strlen(")  suspended  ") + 1);
+                        write(STDOUT_FILENO, jobs[i].name, strlen(jobs[i].name) + 1);
+                        write(STDOUT_FILENO, "\n", strlen("\n") + 1);
                         break;
                     }
                 }
@@ -67,14 +67,14 @@ void handle_sigchld(int sig) {
                     if (jobs[i].pid == sig_pid) {
                         sigprocmask(SIG_BLOCK, &mask, NULL);
                         jobs[i].terminated = true;  // mark terminated
-                        write(STDOUT_FILENO, "[", sizeof("["));
-                        write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
-                        write(STDOUT_FILENO, "] (", sizeof("] ("));
-                        write(STDOUT_FILENO, jobs[i].pid_s, sizeof(jobs[i].pid_s));
-                        write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
-                        write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
-                        write(STDOUT_FILENO, "\n", sizeof("\n"));
                         sigprocmask(SIG_UNBLOCK, &mask, NULL);  
+                        write(STDOUT_FILENO, "[", strlen("[") + 1);
+                        write(STDOUT_FILENO, jobs[i].id_s, strlen(jobs[i].id_s) + 1);
+                        write(STDOUT_FILENO, "] (", strlen("] (") + 1);
+                        write(STDOUT_FILENO, jobs[i].pid_s, strlen(jobs[i].pid_s) + 1);
+                        write(STDOUT_FILENO, ")  killed  ", strlen(")  killed  ") + 1);
+                        write(STDOUT_FILENO, jobs[i].name, strlen(jobs[i].name) + 1);
+                        write(STDOUT_FILENO, "\n", strlen("\n") + 1);
                         break;
                     }  
                 }
