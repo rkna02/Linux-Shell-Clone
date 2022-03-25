@@ -36,16 +36,37 @@ void handle_sigchld(int sig) {
     sigset_t mask;  
     sigfillset(&mask);  
     pid_t sig_pid;
-
     int status;
-    while ((sig_pid = waitpid(-1, &status, WNOHANG)) != -1) {   
-        if ( WIFSIGNALED(status) ) {
-            int exit_status = WTERMSIG(status);       
-            if (exit_status == 2 || exit_status == 3) {
+    
+    while ((sig_pid = waitpid(-1, &status, WNOHANG|WUNTRACED)) > 0) {   
+        if (WIFSTOPPED(status)) {
+            int exit_status = WSTOPSIG(status);  
+            if (exit_status == 19 || exit_status == 20) {
                 for (int i = 0; i < job_id; i++) {
                     if (jobs[i].pid == sig_pid) {
                         sigprocmask(SIG_BLOCK, &mask, NULL);
-                        jobs[i].terminated = true;
+                        jobs[foreground_job - 1].suspended = true;  // mark suspended (not terminated)
+                        write(STDOUT_FILENO, "[", sizeof("["));
+                        write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
+                        write(STDOUT_FILENO, "] (", sizeof("] ("));
+                        write(STDOUT_FILENO, jobs[i].pid_s, sizeof(jobs[i].pid_s));
+                        write(STDOUT_FILENO, ")  suspended  ", sizeof(")  suspended  "));
+                        write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
+                        write(STDOUT_FILENO, "\n", sizeof("\n"));
+                        sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                        break;
+                    }
+                }
+            } 
+        } 
+        
+        if (WIFSIGNALED(status)) {
+            int exit_status = WTERMSIG(status);    
+            if (exit_status == 2 || exit_status == 3 || exit_status == SIGKILL) {  
+                for (int i = 0; i < job_id; i++) {
+                    if (jobs[i].pid == sig_pid) {
+                        sigprocmask(SIG_BLOCK, &mask, NULL);
+                        jobs[i].terminated = true;  // mark terminated
                         write(STDOUT_FILENO, "[", sizeof("["));
                         write(STDOUT_FILENO, jobs[i].id_s, sizeof(jobs[i].id_s));
                         write(STDOUT_FILENO, "] (", sizeof("] ("));
@@ -53,12 +74,14 @@ void handle_sigchld(int sig) {
                         write(STDOUT_FILENO, ")  killed  ", sizeof(")  killed  "));
                         write(STDOUT_FILENO, jobs[i].name, sizeof(jobs[i].name));
                         write(STDOUT_FILENO, "\n", sizeof("\n"));
-                        sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                        sigprocmask(SIG_UNBLOCK, &mask, NULL);  
                         break;
-                    }
+                    }  
                 }
-            }
-        } else {
+            } 
+        } 
+
+        if (WIFEXITED(status)) {
             for (int i = 0; i < job_id; i++) {
                 if (jobs[i].pid == sig_pid) {
                     sigprocmask(SIG_BLOCK, &mask, NULL);
@@ -73,9 +96,13 @@ void handle_sigchld(int sig) {
 }
 
 void handle_sigtstp(int sig) {
+    //sigset_t mask;  
+    //sigfillset(&mask);  
+    //lsigprocmask(SIG_BLOCK, &mask, NULL);
     if (foreground_job != -1) {
-        if (jobs[foreground_job - 1].terminated == false) {
+        if (jobs[foreground_job - 1].terminated == 0 && jobs[foreground_job - 1].suspended == 0) {
             kill(jobs[foreground_job - 1].pid, SIGTSTP);
+            //sigprocmask(SIG_BLOCK, &mask, NULL);
         } else {
             return;
         }
@@ -114,14 +141,14 @@ void install_signal_handlers() {
     struct sigaction chld;
     chld.sa_handler = handle_sigchld;
     chld.sa_flags = SA_RESTART;
-    sigfillset(&chld.sa_mask);
+    sigemptyset(&chld.sa_mask);
     sigaction(SIGCHLD, &chld, NULL);
 
     // install SIGINT
     struct sigaction intt;
     intt.sa_handler = handle_sigint;
     intt.sa_flags = SA_RESTART;
-    sigfillset(&intt.sa_mask);
+    sigemptyset(&intt.sa_mask);
     sigaction(SIGINT, &intt, NULL);
 
     // install SIGQUIT
@@ -130,6 +157,13 @@ void install_signal_handlers() {
     quit.sa_flags = SA_RESTART;
     sigfillset(&quit.sa_mask);
     sigaction(SIGQUIT, &quit, NULL);
+
+    // install SIGTSTP
+    struct sigaction tstp;
+    tstp.sa_handler = handle_sigtstp;
+    tstp.sa_flags = SA_RESTART;
+    sigfillset(&tstp.sa_mask);
+    sigaction(SIGTSTP, &tstp, NULL);
 }
 
 void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
@@ -145,25 +179,30 @@ void spawn(const char **toks, bool bg) { // bg is true iff command ended with &
     }
     if (p1 == 0) {
         sigprocmask(SIG_UNBLOCK, &mask, NULL);
+        setpgid(0, 0);
         int success = execvp(toks[0], toks);
         if (success == -1) {
             fprintf(stderr, "ERROR: cannot run %s\n", toks[0]);
         }
         exit(0);
     } else {
+        // update job status
         job_id = job_id + 1;
         insert_jobs(toks, p1, bg);
-        setpgid(jobs[job_id - 1].pid, 0);
+
+        // print job message if the command is not "kill"
         if (strcmp(jobs[job_id - 1].name, "kill") != 0) {
             printf("[%i] (%ld)  %s\n", job_id, (long) p1, jobs[job_id - 1].name);
         }
+
         sigprocmask(SIG_UNBLOCK, &mask, NULL);
+
         if (bg) {
             return;
         }
         if (!bg) {
-            while (jobs[foreground_job - 1].terminated == false) {
-                sleep(0.1);
+            while (jobs[foreground_job - 1].terminated == false && jobs[foreground_job - 1].suspended == false) {
+                sleep(0.01);
             }
         }
     }
@@ -209,6 +248,9 @@ void insert_jobs(const char **toks, pid_t pid, bool bg) {
     // terminated
     jobs[job_id - 1].terminated = false;
 
+    // suspended
+    jobs[job_id - 1].suspended = false;
+
     // update foreground job if appropriate 
     if (!bg) {
         foreground_job = jobs[job_id - 1].id;
@@ -219,7 +261,11 @@ void insert_jobs(const char **toks, pid_t pid, bool bg) {
 void cmd_jobs(const char **toks) {
     for (int i = 0; i < job_id; i++) {
         if (jobs[i].terminated == false) {
-            printf("[%d] (%ld)  running  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
+            if (jobs[i].suspended == false) {
+                printf("[%d] (%ld)  running  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
+            } else {
+                printf("[%d] (%ld)  suspended  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
+            }
         }
     }
 }
@@ -231,15 +277,21 @@ void cmd_fg(const char **toks) {
 
     if (toks[1][0] == (char)'%') {
         strtol(toks[1] + 1, &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
                     sigprocmask(SIG_BLOCK, &mask, NULL);
-                    foreground_job = jobs[i].id;
+                    if (jobs[i].suspended == true) {
+                        foreground_job = jobs[i].id;
+                        jobs[i].suspended = false;
+                        kill(jobs[i].pid, SIGCONT);
+                    } else {
+                        foreground_job = jobs[i].id;
+                    }
                     sigprocmask(SIG_UNBLOCK, &mask, NULL);
-                    while (jobs[foreground_job - 1].terminated == false) {
+                    while (jobs[foreground_job - 1].terminated == false && jobs[foreground_job - 1].suspended == false) {
                         sleep(0.1);
                     }
                     return;
@@ -249,15 +301,21 @@ void cmd_fg(const char **toks) {
         }
     } else {
         strtol(toks[1], &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
                     sigprocmask(SIG_BLOCK, &mask, NULL);
-                    foreground_job = jobs[i].id;
+                    if (jobs[i].suspended == true) {
+                        foreground_job = jobs[i].id;
+                        jobs[i].suspended = false;
+                        kill(jobs[i].pid, SIGCONT);
+                    } else {
+                        foreground_job = jobs[i].id;
+                    }
                     sigprocmask(SIG_UNBLOCK, &mask, NULL);
-                    while (jobs[foreground_job - 1].terminated == false) {
+                    while (jobs[foreground_job - 1].terminated == false && jobs[foreground_job - 1].suspended == false) {
                         sleep(0.1);
                     }
                     return;
@@ -269,7 +327,53 @@ void cmd_fg(const char **toks) {
 }
 
 void cmd_bg(const char **toks) {
+    sigset_t mask;  
+    sigfillset(&mask);  
+    char *remaining = NULL;
 
+    if (toks[1][0] == (char)'%') {
+        strtol(toks[1] + 1, &remaining, 10);
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    if (jobs[i].suspended == true) {
+                        kill(jobs[i].pid, SIGCONT);
+                        jobs[i].suspended = false;
+                        if (foreground_job == jobs[i].id) {
+                            foreground_job = -1;
+                        }
+                    } 
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    return;
+                }
+            }
+            fprintf(stderr, "ERROR: no job %s\n", toks[1]);
+        }
+    } else {
+        strtol(toks[1], &remaining, 10);
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
+            fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
+        } else {
+            for (int i = 0; i < job_id; i++) {
+                if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
+                    sigprocmask(SIG_BLOCK, &mask, NULL);
+                    if (jobs[i].suspended == true) {
+                        kill(jobs[i].pid, SIGCONT);
+                        jobs[i].suspended = false;
+                        if (foreground_job == jobs[i].id) {
+                            foreground_job = -1;
+                        }
+                    }
+                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+                    return;
+                }
+            }
+            fprintf(stderr, "ERROR: no PID %ld\n", (long) toks[1]);
+        }
+    }
 }
 
 void cmd_slay(const char **toks) {
@@ -279,16 +383,12 @@ void cmd_slay(const char **toks) {
 
     if (toks[1][0] == (char)'%') {
         strtol(toks[1] + 1, &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].id_s, toks[1] + 1) == 0) {
                     kill(jobs[i].pid, SIGKILL);
-                    sigprocmask(SIG_BLOCK, &mask, NULL);
-                    jobs[i].terminated = true;
-                    printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
-                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
                     return;
                 }
             }
@@ -296,16 +396,12 @@ void cmd_slay(const char **toks) {
         }
     } else {
         strtol(toks[1], &remaining, 10);
-        if (remaining != NULL) {
+        if (strcmp((toks[1] + strlen(toks[1])), remaining) != 0) {
             fprintf(stderr, "ERROR: bad argument for fg: %s\n", toks[1]);
         } else {
             for (int i = 0; i < job_id; i++) {
                 if (strcmp(jobs[i].pid_s, toks[1]) == 0) {
                     kill(jobs[i].pid, SIGKILL);
-                    sigprocmask(SIG_BLOCK, &mask, NULL);
-                    jobs[i].terminated = true;
-                    printf("[%d] (%ld)  killed  %s\n", jobs[i].id, (long) jobs[i].pid, jobs[i].name);
-                    sigprocmask(SIG_UNBLOCK, &mask, NULL);
                     return;
                 }
             }
@@ -341,16 +437,22 @@ void eval(const char **toks, bool bg) { // bg is true iff command ended with &
 
     // slay, fg, bg
     } else if (strcmp(toks[0], "slay") == 0) {
-        if (toks[1] == NULL || toks[3] != NULL) {
+        if (toks[1] == NULL || toks[2] != NULL) {
             fprintf(stderr, "ERROR: slay takes exactly one argument\n");
         } else {
             cmd_slay(toks);
         }
     } else if (strcmp(toks[0], "fg") == 0) {
-        if (toks[1] == NULL || toks[3] != NULL) {
+        if (toks[1] == NULL || toks[2] != NULL) {
             fprintf(stderr, "ERROR: fg takes exactly one argument\n");
         } else {
             cmd_fg(toks);
+        }
+    } else if (strcmp(toks[0], "bg") == 0) {
+        if (toks[1] == NULL || toks[2] != NULL) {
+            fprintf(stderr, "ERROR: bg takes exactly one argument\n");
+        } else {
+            cmd_bg(toks);
         }
     } else {
         spawn(toks, bg);
