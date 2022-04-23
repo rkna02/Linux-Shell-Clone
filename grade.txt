@@ -1,7 +1,7 @@
 ********** Grade **********
-T1_new_process : 0.0
-T1_error_message : 0.0
-T2_jobs_command : 0.0
+T1_new_process : 1.0
+T1_error_message : 1.0
+T2_jobs_command : 2.0
 T3_finished_jobs : 0.75
 T3_slay_job_num : 0.75
 T3_slay_pid : 0.5
@@ -12,9 +12,15 @@ T4_sig_quit : 0.5
 T5_ctr_z : 0.75
 T5_resume_bg : 0.75
 T5_resume_fg : 0.5
-bonus_1 : 0.0
-bonus_2 : 0.0
-Total: 5.75
+bonus_1 : 0
+bonus_2 : 0
+Total: 9.75
+
+Late penalty task 1: nan
+
+Late penalty task 2: nan
+
+final mark: 9.75
 
 ********** Tasks Description: **********
 T1_new_process : Correctly spawning a new process
